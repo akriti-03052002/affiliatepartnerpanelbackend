@@ -1,4 +1,4 @@
-const path = require("path");
+const { uploadPartnerFile } = require("../services/fileStorage");
 const { PartnerSettlement } = require("../models/Index");
 const PartnerSettlementBill = require("../models/PartnerSettlementBill");
 const { GST_RATE_PERCENT } = require("../config/constant");
@@ -49,6 +49,14 @@ const submitBill = async (req, res) => {
     const gstAmount = round2((commission * GST_RATE_PERCENT) / 100);
     const totalBillAmount = round2(commission + gstAmount);
 
+    const file = await uploadPartnerFile({
+      buffer: req.file.buffer,
+      partnerId: req.partner._id,
+      subfolder: "bills",
+      originalName: req.file.originalname,
+      mimeType: req.file.mimetype
+    });
+
     const billData = {
       partnerId: req.partner._id,
       settlementId: settlement._id,
@@ -56,13 +64,7 @@ const submitBill = async (req, res) => {
       billDate,
       gstin,
       amount: { commission, gstRatePercent: GST_RATE_PERCENT, gstAmount, totalBillAmount, currency: settlement.amount.currency },
-      file: {
-        storageProvider: "private_storage",
-        objectKey: path.join(String(req.partner._id), "bills", req.file.filename),
-        originalName: req.file.originalname,
-        mimeType: req.file.mimetype,
-        size: req.file.size
-      },
+      file,
       status: "submitted",
       verifiedBy: undefined,
       verifiedAt: undefined,

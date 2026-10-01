@@ -1,5 +1,4 @@
-const path = require("path");
-const fs = require("fs");
+const { uploadPartnerFile, sendStoredFile } = require("../services/fileStorage");
 const { PartnerDocument, PartnerBankAccount, Partner, PartnerNotification } = require("../models/Index");
 const logActivity = require("../utils/logActivity");
 const { autoActivatePartnerIfVerified } = require("../services/partnerActivation");
@@ -31,13 +30,12 @@ const downloadDocument = async (req, res) => {
     return res.status(404).json({ success: false, message: "Document not found." });
   }
 
-  const filePath = path.join(__dirname, "..", "uploads", "partners", document.file.objectKey);
-
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ success: false, message: "File not found on server." });
+  try {
+    return await sendStoredFile(res, document.file);
+  } catch (error) {
+    console.error("admin downloadDocument error:", error);
+    return res.status(500).json({ success: false, message: "Something went wrong downloading the document." });
   }
-
-  return res.download(filePath, document.file.originalName);
 };
 
 // Admin onboards a partner directly (no self-registration) and uploads
@@ -68,16 +66,17 @@ const uploadDocumentForPartner = async (req, res) => {
       return res.status(404).json({ success: false, message: "Partner not found." });
     }
 
+    const file = await uploadPartnerFile({
+      buffer: req.file.buffer,
+      partnerId: partner._id,
+      originalName: req.file.originalname,
+      mimeType: req.file.mimetype
+    });
+
     const document = await PartnerDocument.create({
       partnerId,
       documentType,
-      file: {
-        storageProvider: "private_storage",
-        objectKey: path.join(String(partnerId), req.file.filename),
-        originalName: req.file.originalname,
-        mimeType: req.file.mimetype,
-        size: req.file.size
-      },
+      file,
       verification: { status: "pending" }
     });
 

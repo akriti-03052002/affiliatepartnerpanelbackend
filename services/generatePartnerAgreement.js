@@ -2,8 +2,8 @@ const fs = require("fs");
 const path = require("path");
 const PDFDocument = require("pdfkit");
 const { SettlementSetting, PartnerDocument } = require("../models/Index");
+const { uploadPartnerFile } = require("./fileStorage");
 
-const UPLOAD_ROOT = path.join(__dirname, "..", "uploads", "partners");
 const LOGO_PATH = path.join(__dirname, "..", "assets", "spotx-logo.png");
 const LOGO_ASPECT = 789 / 307; // actual pixel dimensions of assets/spotx-logo.png
 
@@ -43,17 +43,12 @@ const formatAddress = (address) => {
 };
 
 /**
- * Renders the full multi-section partner agreement PDF to disk and returns
- * file metadata in the same shape partnerDocumentController.uploadDocument
- * produces, so the caller can save it as a normal PartnerDocument row.
+ * Renders the full multi-section partner agreement PDF, uploads it to
+ * Cloudinary, and returns file metadata in the same shape
+ * partnerDocumentController.uploadDocument produces, so the caller can save
+ * it as a normal PartnerDocument row.
  */
 const generatePartnerAgreementFile = async (partner) => {
-  const partnerDir = path.join(UPLOAD_ROOT, String(partner._id));
-  fs.mkdirSync(partnerDir, { recursive: true });
-
-  const filename = `partner-agreement-${Date.now()}.pdf`;
-  const filePath = path.join(partnerDir, filename);
-
   const settlementSetting = await SettlementSetting.findOne({ partnerId: partner._id });
 
   const effectiveDate = new Date().toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" });
@@ -67,10 +62,12 @@ const generatePartnerAgreementFile = async (partner) => {
     ? ` Tax will be deducted at source at ${formatPercent(settlementSetting.tax.tdsRate)} as applicable under Indian tax law.`
     : " Applicable taxes, including tax deducted at source, will be withheld as required under Indian law.";
 
-  await new Promise((resolve, reject) => {
+  const buffer = await new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: "A4", margin: 56, bufferPages: true });
-    const stream = fs.createWriteStream(filePath);
-    doc.pipe(stream);
+    const chunks = [];
+    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
 
     let sectionNumber = 0;
     const heading = (title) => {
@@ -284,18 +281,15 @@ const generatePartnerAgreementFile = async (partner) => {
     }
 
     doc.end();
-    stream.on("finish", resolve);
-    stream.on("error", reject);
   });
 
-  const { size } = fs.statSync(filePath);
-
-  return {
-    objectKey: path.join(String(partner._id), filename),
+  return uploadPartnerFile({
+    buffer,
+    partnerId: partner._id,
+    publicId: `partner-agreement-${Date.now()}`,
     originalName: "SPOTX Partner Agreement.pdf",
-    mimeType: "application/pdf",
-    size
-  };
+    mimeType: "application/pdf"
+  });
 };
 
 /**

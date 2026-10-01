@@ -1,7 +1,6 @@
-const path = require("path");
-const fs = require("fs");
 const { PartnerDocument } = require("../models/Index");
 const logActivity = require("../utils/logActivity");
+const { uploadPartnerFile, sendStoredFile } = require("../services/fileStorage");
 
 /* ============================================================
    PARTNER KYC DOCUMENTS
@@ -31,17 +30,18 @@ const uploadDocument = async (req, res) => {
       return res.status(400).json({ success: false, message: "A file is required." });
     }
 
+    const file = await uploadPartnerFile({
+      buffer: req.file.buffer,
+      partnerId: req.partner._id,
+      originalName: req.file.originalname,
+      mimeType: req.file.mimetype
+    });
+
     const document = await PartnerDocument.create({
       partnerId: req.partner._id,
       documentType,
       documentNumber: documentNumber || "",
-      file: {
-        storageProvider: "private_storage",
-        objectKey: path.join(String(req.partner._id), req.file.filename),
-        originalName: req.file.originalname,
-        mimeType: req.file.mimetype,
-        size: req.file.size
-      },
+      file,
       verification: { status: "pending" }
     });
 
@@ -92,13 +92,7 @@ const downloadDocument = async (req, res) => {
       return res.status(403).json({ success: false, message: "This document is no longer available for download once your account is verified." });
     }
 
-    const filePath = path.join(__dirname, "..", "uploads", "partners", document.file.objectKey);
-
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ success: false, message: "File not found on server." });
-    }
-
-    return res.download(filePath, document.file.originalName);
+    return await sendStoredFile(res, document.file);
   } catch (error) {
     console.error("downloadDocument error:", error);
     return res.status(500).json({ success: false, message: "Something went wrong downloading the document." });

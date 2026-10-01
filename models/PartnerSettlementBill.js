@@ -65,9 +65,9 @@ const PartnerSettlementBillSchema = new Schema(
     },
 
     // Same file shape as PartnerDocument.file, same storage convention
-    // (backend/uploads/partners/<partnerId>/bills/<file>).
+    // (Cloudinary spotx/partners/<partnerId>/bills/<file>).
     file: {
-      storageProvider: { type: String, enum: ["azure_blob", "gcs", "private_storage"], default: "private_storage" },
+      storageProvider: { type: String, enum: ["azure_blob", "gcs", "private_storage", "cloudinary"], default: "private_storage" },
       objectKey: { type: String, required: true },
       originalName: { type: String, default: "" },
       mimeType: { type: String, default: "" },

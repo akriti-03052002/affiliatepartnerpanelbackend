@@ -46,7 +46,7 @@ const PartnerDocumentSchema = new Schema(
     file: {
       storageProvider: {
         type: String,
-        enum: ["azure_blob", "gcs", "private_storage"],
+        enum: ["azure_blob", "gcs", "private_storage", "cloudinary"],
         default: "private_storage"
       },
 

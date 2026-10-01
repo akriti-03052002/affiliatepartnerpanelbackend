@@ -1,5 +1,4 @@
-const path = require("path");
-const fs = require("fs");
+const { sendStoredFile } = require("../services/fileStorage");
 const { PartnerSettlement, PartnerCommission, PartnerNotification, PartnerBankAccount } = require("../models/Index");
 const PartnerSettlementBill = require("../models/PartnerSettlementBill");
 const { createSettlementBatch } = require("../services/settlementCreation");
@@ -525,12 +524,7 @@ const downloadBillAsAdmin = async (req, res) => {
       return res.status(404).json({ success: false, message: "No bill has been submitted for this settlement." });
     }
 
-    const filePath = path.join(__dirname, "..", "uploads", "partners", bill.file.objectKey);
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ success: false, message: "File not found on server." });
-    }
-
-    return res.download(filePath, bill.file.originalName);
+    return await sendStoredFile(res, bill.file);
   } catch (error) {
     console.error("downloadBillAsAdmin error:", error);
     return res.status(500).json({ success: false, message: "Something went wrong downloading the bill." });
