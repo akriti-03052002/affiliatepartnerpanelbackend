@@ -5,7 +5,7 @@ const { createSettlementBatch } = require("../services/settlementCreation");
 const logActivity = require("../utils/logActivity");
 const { recordSettlementHistory, getSettlementHistory } = require("../utils/settlementHistory");
 const {
-  checkSettlementPayoutReadiness, putSettlementOnHold,
+  checkSettlementPayoutReadiness, checkBillRequirement, notifyBillDue, putSettlementOnHold,
   releaseSettlementHold, HoldReleaseError
 } = require("../utils/settlementHold");
 const { RazorpayXError } = require("../utils/razorpayX");
@@ -178,8 +178,8 @@ const approveSettlement = async (req, res) => {
   }
 
   // Re-check right before approving — the partner may have been suspended,
-  // put under review, had their bank account invalidated, or (new) still
-  // not have a verified GST bill on file since this batch was drafted.
+  // put under review, or had their bank account invalidated since this
+  // batch was drafted. (The bill comes after approval, so it isn't checked here.)
   const eligibility = await checkSettlementPayoutReadiness(settlement);
   if (!eligibility.eligible) {
     await putSettlementOnHold(settlement, { code: eligibility.code, reason: eligibility.reason, byUserId: req.adminUser._id, req });
@@ -199,6 +199,8 @@ const approveSettlement = async (req, res) => {
     byUserId: req.adminUser._id,
     req
   });
+
+  await notifyBillDue(settlement);
 
   return res.json({ success: true, message: "Settlement approved.", data: settlement });
 };
@@ -220,9 +222,17 @@ const guardBeforePayout = async (req, res) => {
     return null;
   }
 
+  // Every settlement needs the affiliate's bill, verified by an admin,
+  // before it's paid. Not a hold — the settlement stays approved and
+  // simply waits for the bill.
+  const billCheck = await checkBillRequirement(settlement._id);
+  if (!billCheck.ready) {
+    res.status(400).json({ success: false, message: billCheck.reason });
+    return null;
+  }
+
   // Last check before money actually moves — the bank account could've
-  // been invalidated, the partner suspended, or a GST bill gone
-  // unverified since approval.
+  // been invalidated or the partner suspended since approval.
   const eligibility = await checkSettlementPayoutReadiness(settlement);
   if (!eligibility.eligible) {
     await putSettlementOnHold(settlement, { code: eligibility.code, reason: eligibility.reason, byUserId: req.adminUser._id, req });

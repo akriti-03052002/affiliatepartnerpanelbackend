@@ -4,11 +4,12 @@ const ObjectId = Schema.Types.ObjectId;
 
 /* ============================================================
    PARTNER SETTLEMENT BILL
-   A GST-registered partner (has a verified "gst_certificate"
-   PartnerDocument — see utils/partnerVerification.js) has to submit a
-   bill/invoice for each settlement batch before it can be paid, since
-   what SPotX owes them is commission + GST, not just the raw commission
-   PartnerSettlement.amount already tracks. One bill per PartnerSettlement.
+   Every affiliate submits a bill/invoice for each settlement batch once
+   it's approved, and it must be verified before the batch can be paid.
+   For GST-registered partners (verified "gst_certificate" PartnerDocument
+   — see utils/partnerVerification.js) what SPOTX owes is commission + GST;
+   for everyone else the bill is the plain commission. One bill per
+   PartnerSettlement.
    Everything about whether a bill is REQUIRED and whether payout is
    BLOCKED without one lives in utils/settlementHold.js
    (checkBillRequirement) — this model is just the record itself.
@@ -43,10 +44,11 @@ const PartnerSettlementBillSchema = new Schema(
     // Partner's GST registration number for this bill — no structured
     // GSTIN field exists anywhere else in the schema today (PartnerDocument
     // only has a generic free-text documentNumber), so this is where it's
-    // actually captured.
+    // actually captured. Required only for GST-registered partners
+    // (enforced in partnerSettlementBillController.submitBill).
     gstin: {
       type: String,
-      required: true,
+      default: "",
       trim: true,
       uppercase: true
     },

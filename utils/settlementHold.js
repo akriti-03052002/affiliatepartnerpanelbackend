@@ -63,60 +63,49 @@ const checkPartnerPayoutEligibility = async (partnerId) => {
   return { eligible: true };
 };
 
-/* GST-registered partners (business types whose required KYC includes a
-   verified "gst_certificate" — see utils/partnerVerification.js) must
-   submit a bill for a settlement batch before it can be paid: what's
-   actually owed is commission + GST, not just the raw commission amount.
-   Checked independently of checkPartnerPayoutEligibility (which only
-   looks at partner/bank state, not any one settlement) since this is
-   scoped to a specific settlementId. */
-const checkBillRequirement = async (partnerId, settlementId) => {
-  const partner = await Partner.findById(partnerId);
-  if (!partner) return { eligible: true }; // checkPartnerPayoutEligibility already reports "not found"
+/* GST-registered = a business type whose KYC includes a GST certificate
+   (see utils/partnerVerification.js) AND that certificate is verified.
+   Only these partners get GST added on top of their bill; everyone else
+   bills the plain reward amount. */
+const isGstRegistered = async (partnerId) => {
+  const partner = await Partner.findById(partnerId).select("partnerType").lean();
+  if (!partner || !getRequiredDocumentTypes(partner.partnerType).includes("gst_certificate")) return false;
 
-  const gstRequired = getRequiredDocumentTypes(partner.partnerType).includes("gst_certificate");
-  if (!gstRequired) return { eligible: true };
-
-  const verifiedGstDoc = await PartnerDocument.findOne({
+  return Boolean(await PartnerDocument.exists({
     partnerId,
     documentType: "gst_certificate",
     "verification.status": "verified"
-  });
-  if (!verifiedGstDoc) return { eligible: true }; // GST-eligible type, but not actually GST-registered — nothing to bill
+  }));
+};
 
+/* Every affiliate submits a bill (invoice) for each settlement once it's
+   approved, and an admin verifies it before the payout can go out. This
+   is checked only at payment time (see adminSettlementController
+   .guardBeforePayout) — a missing bill doesn't put the settlement on hold,
+   it just stays "approved" and waits for the bill. */
+const checkBillRequirement = async (settlementId) => {
   const bill = await PartnerSettlementBill.findOne({ settlementId });
 
   if (!bill) {
-    return {
-      eligible: false,
-      code: "incomplete_info",
-      reason: "GST-registered — a bill must be submitted for this settlement before it can be paid."
-    };
+    return { ready: false, reason: "Waiting for the affiliate to upload a bill for this settlement." };
+  }
+
+  if (bill.status === "rejected") {
+    return { ready: false, reason: `The bill was rejected (${bill.rejectionReason || "no reason given"}) — waiting for the affiliate to upload a corrected one.` };
   }
 
   if (bill.status !== "verified") {
-    return {
-      eligible: false,
-      code: "incomplete_info",
-      reason: bill.status === "rejected"
-        ? `The submitted bill was rejected: ${bill.rejectionReason || "no reason given"}. A new bill must be submitted.`
-        : "A bill has been submitted for this settlement but not yet verified."
-    };
+    return { ready: false, reason: "The affiliate's bill has been submitted — verify it before paying." };
   }
 
-  return { eligible: true };
+  return { ready: true };
 };
 
-/* Combines the partner/bank-level check with the settlement-scoped bill
-   check — the one function every settlement-mutating action (create,
-   approve, and all three payment paths) should call, so none of them can
-   independently forget one half of the gate. */
-const checkSettlementPayoutReadiness = async (settlement) => {
-  const partnerEligibility = await checkPartnerPayoutEligibility(settlement.partnerId);
-  if (!partnerEligibility.eligible) return partnerEligibility;
-
-  return checkBillRequirement(settlement.partnerId, settlement._id);
-};
+/* Partner + bank eligibility for a settlement — what decides whether
+   create/approve/pay goes through or lands on hold instead. The bill is
+   deliberately not part of this: it comes after approval and is checked
+   separately right before payment. */
+const checkSettlementPayoutReadiness = (settlement) => checkPartnerPayoutEligibility(settlement.partnerId);
 
 const notifyPartner = (partnerId, { type, title, message, entityId }) =>
   PartnerNotification.create({
@@ -126,6 +115,15 @@ const notifyPartner = (partnerId, { type, title, message, entityId }) =>
     message,
     entity: { type: "PartnerSettlement", entityId }
   }).catch((error) => console.error("settlementHold: notification failed:", error.message));
+
+/* Tells the affiliate a settlement was approved and that it's waiting on
+   their bill — called from every path that approves a settlement. */
+const notifyBillDue = (settlement) => notifyPartner(settlement.partnerId, {
+  type: "settlement_bill_due",
+  title: "Settlement approved — upload your bill",
+  message: `Settlement ${settlement.settlementNumber} was approved. Upload your bill on the Settlements page; SPOTX pays it once the bill is verified.`,
+  entityId: settlement._id
+});
 
 /* Puts a single settlement on hold, saving whatever status it was in so
    releaseSettlementHold can restore it later instead of guessing.
@@ -284,6 +282,8 @@ module.exports = {
   HoldReleaseError,
   checkPartnerPayoutEligibility,
   checkBillRequirement,
+  isGstRegistered,
+  notifyBillDue,
   checkSettlementPayoutReadiness,
   putSettlementOnHold,
   holdSettlementsForPartner,

@@ -6,26 +6,37 @@ const logActivity = require("../utils/logActivity");
 const notifyAdmins = require("../utils/notifyAdmins");
 const { partnerLabel } = notifyAdmins;
 const { recordSettlementHistory } = require("../utils/settlementHistory");
+const { isGstRegistered } = require("../utils/settlementHold");
 
 /* ============================================================
    PARTNER — SETTLEMENT BILL SUBMISSION
-   A GST-registered partner submits one bill per settlement batch (see
-   utils/settlementHold.checkBillRequirement for who this applies to and
-   what blocks payout without one). The bill amount is always
-   server-computed off the settlement's own gross commission + the shared
-   GST_RATE_PERCENT constant — never taken from the partner's input, same
-   "never trust the client for money" rule as everywhere else Razorpay
-   touches this app.
+   Every affiliate submits one bill per settlement once it's approved; an
+   admin verifies it before the payout goes out (see
+   utils/settlementHold.checkBillRequirement). The bill amount is always
+   server-computed off the settlement's own gross commission, plus
+   GST_RATE_PERCENT only for verified GST-registered partners — never
+   taken from the partner's input, same "never trust the client for
+   money" rule as everywhere else Razorpay touches this app.
 ============================================================ */
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
+// A bill can be uploaded once SPOTX has approved the settlement (or while
+// an approved one is on hold / being retried) — never before approval.
+const BILLABLE_STATUSES = ["approved", "on_hold", "failed"];
+
 const submitBill = async (req, res) => {
   try {
-    const { billNumber, billDate, gstin } = req.body;
+    const { billNumber, billDate } = req.body;
+    const gstin = (req.body.gstin || "").trim().toUpperCase();
+    const gstRegistered = await isGstRegistered(req.partner._id);
 
-    if (!billNumber || !billDate || !gstin) {
-      return res.status(400).json({ success: false, message: "Bill number, bill date, and GSTIN are all required." });
+    if (!billNumber || !billDate) {
+      return res.status(400).json({ success: false, message: "Bill number and bill date are required." });
+    }
+
+    if (gstRegistered && !gstin) {
+      return res.status(400).json({ success: false, message: "You're GST-registered — enter your GSTIN on the bill." });
     }
 
     if (!req.file) {
@@ -38,8 +49,13 @@ const submitBill = async (req, res) => {
       return res.status(404).json({ success: false, message: "Settlement not found." });
     }
 
-    if (["paid", "cancelled"].includes(settlement.status)) {
-      return res.status(400).json({ success: false, message: `A bill can't be submitted for a settlement that's already ${settlement.status}.` });
+    if (!BILLABLE_STATUSES.includes(settlement.status)) {
+      return res.status(400).json({
+        success: false,
+        message: ["paid", "cancelled"].includes(settlement.status)
+          ? `A bill can't be submitted for a settlement that's already ${settlement.status}.`
+          : "You can upload a bill once SPOTX approves this settlement."
+      });
     }
 
     const existing = await PartnerSettlementBill.findOne({ settlementId: settlement._id });
@@ -47,8 +63,11 @@ const submitBill = async (req, res) => {
       return res.status(400).json({ success: false, message: `A bill has already been ${existing.status} for this settlement.` });
     }
 
+    // GST is added only for verified GST-registered partners — decided from
+    // their KYC on file, never from whether they typed a GSTIN.
     const commission = settlement.amount.gross;
-    const gstAmount = round2((commission * GST_RATE_PERCENT) / 100);
+    const gstRatePercent = gstRegistered ? GST_RATE_PERCENT : 0;
+    const gstAmount = round2((commission * gstRatePercent) / 100);
     const totalBillAmount = round2(commission + gstAmount);
 
     const file = await uploadPartnerFile({
@@ -65,7 +84,7 @@ const submitBill = async (req, res) => {
       billNumber,
       billDate,
       gstin,
-      amount: { commission, gstRatePercent: GST_RATE_PERCENT, gstAmount, totalBillAmount, currency: settlement.amount.currency },
+      amount: { commission, gstRatePercent, gstAmount, totalBillAmount, currency: settlement.amount.currency },
       file,
       status: "submitted",
       verifiedBy: undefined,

@@ -2,7 +2,7 @@ const { PartnerSettlement, PartnerCommission, SettlementSetting } = require("../
 const { generateSettlementNumber } = require("../utils/generateCode");
 const logActivity = require("../utils/logActivity");
 const { recordSettlementHistory } = require("../utils/settlementHistory");
-const { checkSettlementPayoutReadiness, putSettlementOnHold } = require("../utils/settlementHold");
+const { checkSettlementPayoutReadiness, putSettlementOnHold, notifyBillDue } = require("../utils/settlementHold");
 
 /**
  * Bundles approved rewards into one settlement (payout) for a partner.
@@ -13,7 +13,8 @@ const { checkSettlementPayoutReadiness, putSettlementOnHold } = require("../util
  * approve: false → a "draft" batch that still needs approving.
  *
  * Either way, if the partner can't be paid yet (bank unverified, account
- * suspended, GST bill missing...) the settlement goes on hold with the reason.
+ * suspended...) the settlement goes on hold with the reason. Once approved,
+ * the affiliate is asked for their bill, which must be verified before payment.
  * Returns { settlement, heldReason }.
  */
 const createSettlementBatch = async ({ partnerId, commissions, byUserId, req, approve = false, period }) => {
@@ -72,6 +73,7 @@ const createSettlementBatch = async ({ partnerId, commissions, byUserId, req, ap
     settlement.approvedAt = new Date();
     await settlement.save();
     await recordSettlementHistory(settlement, { action: "approved", fromStatus: "draft", toStatus: "approved", byUserId, req });
+    await notifyBillDue(settlement);
   }
 
   return { settlement, heldReason: null };
