@@ -40,12 +40,22 @@ const app = express();
 
 app.use(helmet());
 
-const allowedOrigins = (process.env.CLIENT_URLS || process.env.CLIENT_URL || "http://localhost:5173")
-  .split(",")
-  // Browsers send the Origin header without a trailing slash, so a
-  // "https://app.example.com/" entry would otherwise never match.
-  .map((origin) => origin.trim().replace(/\/+$/, ""))
-  .filter(Boolean);
+// The production frontend and local Vite are always allowed; CLIENT_URLS /
+// CLIENT_URL add to this list (e.g. a LAN address or a preview deploy).
+const DEFAULT_ORIGINS = [
+  "https://affiliatepartnerpanelfrontend.vercel.app",
+  "http://localhost:5173"
+];
+
+const allowedOrigins = [
+  ...new Set(
+    [...DEFAULT_ORIGINS, ...`${process.env.CLIENT_URLS || ""},${process.env.CLIENT_URL || ""}`.split(",")]
+      // Browsers send the Origin header without a trailing slash, so a
+      // "https://app.example.com/" entry would otherwise never match.
+      .map((origin) => origin.trim().replace(/\/+$/, ""))
+      .filter(Boolean)
+  )
+];
 
 app.use(
   cors({
