@@ -42,7 +42,10 @@ app.use(helmet());
 
 const allowedOrigins = (process.env.CLIENT_URLS || process.env.CLIENT_URL || "http://localhost:5173")
   .split(",")
-  .map((origin) => origin.trim());
+  // Browsers send the Origin header without a trailing slash, so a
+  // "https://app.example.com/" entry would otherwise never match.
+  .map((origin) => origin.trim().replace(/\/+$/, ""))
+  .filter(Boolean);
 
 app.use(
   cors({
