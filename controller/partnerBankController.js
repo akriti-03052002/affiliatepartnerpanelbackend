@@ -1,6 +1,8 @@
 const { PartnerBankAccount, PartnerDocument } = require("../models/Index");
 const { encrypt, maskAccountNumber, maskIfsc } = require("../utils/encryption");
 const logActivity = require("../utils/logActivity");
+const notifyAdmins = require("../utils/notifyAdmins");
+const { partnerLabel } = notifyAdmins;
 const { holdSettlementsForPartner } = require("../utils/settlementHold");
 const { createOrder, verifyPaymentSignature, fetchPaymentById, RazorpayLookupError } = require("../utils/razorpay");
 const { applyBankVerificationPayment } = require("../services/partnerBankVerification");
@@ -127,6 +129,21 @@ const upsertBankAccount = async (req, res) => {
       entityId: bankAccount._id,
       description: `${req.partnerUser.name} added/updated bank account details.`,
       req
+    });
+
+    // Changing an already-verified account also put their settlements on
+    // hold above, so finance needs to know too, not just the reviewers.
+    await notifyAdmins({
+      type: wasVerified ? "bank_details_changed" : "bank_details_submitted",
+      title: wasVerified ? "Verified bank account changed" : "Bank details to review",
+      message: wasVerified
+        ? `${partnerLabel(req.partner)} replaced their verified bank account. Payouts are on hold until the new account is verified.`
+        : `${partnerLabel(req.partner)} submitted bank account details for verification.`,
+      link: "/admin/bank",
+      audienceRoles: wasVerified ? ["kyc_reviewer", "finance"] : ["kyc_reviewer"],
+      partnerId: req.partner._id,
+      entityType: "PartnerBankAccount",
+      entityId: bankAccount._id
     });
 
     return res.json({

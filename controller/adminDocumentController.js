@@ -1,6 +1,8 @@
 const { uploadPartnerFile, sendStoredFile } = require("../services/fileStorage");
 const { PartnerDocument, PartnerBankAccount, Partner, PartnerNotification } = require("../models/Index");
 const logActivity = require("../utils/logActivity");
+const notifyAdmins = require("../utils/notifyAdmins");
+const { partnerLabel } = notifyAdmins;
 const { autoActivatePartnerIfVerified } = require("../services/partnerActivation");
 const { isKycDocumentsVerified } = require("../utils/partnerVerification");
 const { getAffiliatePartnerIds } = require("../utils/affiliateScope");
@@ -99,6 +101,20 @@ const uploadDocumentForPartner = async (req, res) => {
       entityId: document._id,
       description: `${req.adminUser.name} uploaded a ${documentType} document on behalf of the partner.`,
       req
+    });
+
+    // Uploading isn't reviewing — the rest of the KYC team still needs to
+    // see it; it starts out read for the admin who uploaded it.
+    await notifyAdmins({
+      type: "document_uploaded",
+      title: "KYC document to review",
+      message: `${req.adminUser.name} uploaded a ${documentType.replace(/_/g, " ")} document for ${partnerLabel(partner)}.`,
+      link: "/admin/documents",
+      audienceRoles: ["kyc_reviewer"],
+      partnerId: partner._id,
+      entityType: "PartnerDocument",
+      entityId: document._id,
+      actorAdminId: req.adminUser._id
     });
 
     return res.status(201).json({ success: true, message: "Document uploaded.", data: document });

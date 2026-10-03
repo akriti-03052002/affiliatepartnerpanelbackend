@@ -9,6 +9,7 @@ module.exports = {
   PartnerSettlement: require("./Partnersettlement"),
   PartnerActivity: require("./Partneractivity"),
   PartnerNotification: require("./Partnernotification"),
+  AdminNotification: require("./AdminNotification"),
   User: require("./User"),
   EmailOtp: require("./EmailOtp"),
   ScreenPricing: require("./ScreenPricing")

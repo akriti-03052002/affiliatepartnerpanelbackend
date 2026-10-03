@@ -1,4 +1,6 @@
-const { PartnerNotification } = require("../models/Index");
+const { Partner, PartnerNotification } = require("../models/Index");
+const notifyAdmins = require("../utils/notifyAdmins");
+const { partnerLabel } = notifyAdmins;
 
 /* ============================================================
    PARTNER BANK VERIFICATION — ₹1 CHECKOUT PAYMENT
@@ -102,6 +104,18 @@ const applyBankVerificationPayment = async (bankAccount, payment) => {
       ? "Your ₹1 bank verification payment was confirmed and the bank matched what you entered. An admin will now do a final review."
       : match.failureReason,
     entity: { type: "PartnerBankAccount", entityId: bankAccount._id }
+  });
+
+  const partner = await Partner.findById(bankAccount.partnerId).select("partnerCode legalEntity.businessName primaryContact.name").lean();
+  await notifyAdmins({
+    type: "bank_payment_confirmed",
+    title: "Bank check payment received",
+    message: `${partner ? partnerLabel(partner) : "An affiliate"} completed the ₹1 bank verification payment (bank match: ${match.nameMatchStatus.replace(/_/g, " ")}). Ready for review.`,
+    link: "/admin/bank",
+    audienceRoles: ["kyc_reviewer"],
+    partnerId: bankAccount.partnerId,
+    entityType: "PartnerBankAccount",
+    entityId: bankAccount._id
   });
 
   return bankAccount;

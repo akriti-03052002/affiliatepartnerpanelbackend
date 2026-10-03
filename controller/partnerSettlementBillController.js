@@ -3,6 +3,8 @@ const { PartnerSettlement } = require("../models/Index");
 const PartnerSettlementBill = require("../models/PartnerSettlementBill");
 const { GST_RATE_PERCENT } = require("../config/constant");
 const logActivity = require("../utils/logActivity");
+const notifyAdmins = require("../utils/notifyAdmins");
+const { partnerLabel } = notifyAdmins;
 const { recordSettlementHistory } = require("../utils/settlementHistory");
 
 /* ============================================================
@@ -97,6 +99,17 @@ const submitBill = async (req, res) => {
       entityId: settlement._id,
       description: `${req.partnerUser.name} submitted a bill (${billNumber}) for settlement ${settlement.settlementNumber}.`,
       req
+    });
+
+    await notifyAdmins({
+      type: "bill_submitted",
+      title: existing ? "Bill resubmitted for review" : "Bill to verify",
+      message: `${partnerLabel(req.partner)} ${existing ? "resubmitted" : "submitted"} bill ${billNumber} for settlement ${settlement.settlementNumber}. Payout waits on this bill being verified.`,
+      link: "/admin/settlements",
+      audienceRoles: ["finance"],
+      partnerId: req.partner._id,
+      entityType: "PartnerSettlement",
+      entityId: settlement._id
     });
 
     return res.status(201).json({ success: true, message: "Bill submitted — awaiting verification.", data: bill });

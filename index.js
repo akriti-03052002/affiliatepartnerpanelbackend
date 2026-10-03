@@ -31,6 +31,7 @@ const adminConfigRoutes = require("./router/adminConfigRoutes");
 const adminCommissionRoutes = require("./router/adminCommissionRoutes");
 const adminSettlementRoutes = require("./router/adminSettlementRoutes");
 const adminStatsRoutes = require("./router/adminStatsRoutes");
+const adminNotificationRoutes = require("./router/adminNotificationRoutes");
 
 const app = express();
 
@@ -124,6 +125,7 @@ app.use("/api/admin/config", adminAuthMiddleware, adminConfigRoutes);
 app.use("/api/admin/commissions", adminAuthMiddleware, adminCommissionRoutes);
 app.use("/api/admin/settlements", adminAuthMiddleware, adminSettlementRoutes);
 app.use("/api/admin/stats", adminAuthMiddleware, adminStatsRoutes);
+app.use("/api/admin/notifications", adminAuthMiddleware, adminNotificationRoutes);
 
 /* ==========================================
    404 + ERROR HANDLER

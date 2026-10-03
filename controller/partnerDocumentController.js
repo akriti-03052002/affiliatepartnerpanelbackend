@@ -1,5 +1,7 @@
 const { PartnerDocument } = require("../models/Index");
 const logActivity = require("../utils/logActivity");
+const notifyAdmins = require("../utils/notifyAdmins");
+const { partnerLabel } = notifyAdmins;
 const { uploadPartnerFile, sendStoredFile } = require("../services/fileStorage");
 
 /* ============================================================
@@ -68,6 +70,17 @@ const uploadDocument = async (req, res) => {
       entityId: document._id,
       description: `${req.partnerUser.name} uploaded a ${documentType} document.`,
       req
+    });
+
+    await notifyAdmins({
+      type: "document_uploaded",
+      title: "KYC document to review",
+      message: `${partnerLabel(req.partner)} uploaded a ${documentType.replace(/_/g, " ")} document.`,
+      link: "/admin/documents",
+      audienceRoles: ["kyc_reviewer"],
+      partnerId: req.partner._id,
+      entityType: "PartnerDocument",
+      entityId: document._id
     });
 
     return res.status(201).json({ success: true, message: "Document uploaded.", data: document });

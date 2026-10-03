@@ -1,5 +1,7 @@
 const { PartnerReferral, Partner } = require("../models/Index");
 const logActivity = require("../utils/logActivity");
+const notifyAdmins = require("../utils/notifyAdmins");
+const { partnerLabel } = notifyAdmins;
 
 /* ============================================================
    PARTNER LEADS
@@ -56,6 +58,17 @@ const createReferral = async (req, res) => {
       entityId: referral._id,
       description: `${req.partnerUser.name} generated a lead for ${customer.companyName}.`,
       req
+    });
+
+    await notifyAdmins({
+      type: "lead_submitted",
+      title: "New lead to contact",
+      message: `${partnerLabel(req.partner)} referred ${customer.companyName} (${screenCount} screen${screenCount === 1 ? "" : "s"}).`,
+      link: "/admin/leads",
+      audienceRoles: ["kyc_reviewer"],
+      partnerId: req.partner._id,
+      entityType: "PartnerReferral",
+      entityId: referral._id
     });
 
     return res.status(201).json({ success: true, message: "Lead generated. SPOTX will take it from here.", data: referral });

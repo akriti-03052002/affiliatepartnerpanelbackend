@@ -6,6 +6,7 @@ const { Partner, PartnerUser, EmailOtp } = require("../models/Index");
 const { generatePartnerCode, generateReferralCode } = require("../utils/generateCode");
 const { ROLE_PERMISSIONS } = require("../config/roles");
 const logActivity = require("../utils/logActivity");
+const notifyAdmins = require("../utils/notifyAdmins");
 const { sendMail } = require("../utils/mailer");
 
 // =====================================================
@@ -244,6 +245,17 @@ const registerPartner = async (req, res) => {
       entityId: partner._id,
       description: "Partner account registered successfully.",
       req
+    });
+
+    await notifyAdmins({
+      type: "affiliate_registered",
+      title: "New affiliate registered",
+      message: `${contactName} (${partner.partnerCode}) signed up. They'll submit KYC documents and bank details next.`,
+      link: `/admin/partners/${partner._id}`,
+      audienceRoles: ["kyc_reviewer"],
+      partnerId: partner._id,
+      entityType: "Partner",
+      entityId: partner._id
     });
 
     const token = generateToken(partnerUser);
