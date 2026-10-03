@@ -38,6 +38,11 @@ const app = express();
    MIDDLEWARE
 ========================================== */
 
+// Render (and most hosts) sit one proxy in front of the app. Without this,
+// req.ip is the proxy's address, so the login rate limiters would lump
+// every visitor into one shared bucket.
+app.set("trust proxy", 1);
+
 app.use(helmet());
 
 // The production frontend and local Vite are always allowed; CLIENT_URLS /
