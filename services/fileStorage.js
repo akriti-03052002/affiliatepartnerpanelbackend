@@ -78,11 +78,12 @@ const sendStoredFile = async (res, file) => {
     return res.download(filePath, file.originalName);
   }
 
-  const signedUrl = cloudinary.url(file.objectKey, {
+  // Fetched through Cloudinary's signed download API rather than a signed
+  // delivery URL — the delivery CDN refuses PDFs on this account ("deny or
+  // ACL failure"), the API does not.
+  const signedUrl = cloudinary.utils.private_download_url(file.objectKey, "", {
     resource_type: RESOURCE_TYPE,
-    type: DELIVERY_TYPE,
-    sign_url: true,
-    secure: true
+    type: DELIVERY_TYPE
   });
 
   const upstream = await fetch(signedUrl);
