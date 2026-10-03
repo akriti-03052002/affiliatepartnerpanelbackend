@@ -1,7 +1,6 @@
 const { PartnerSettlement, SettlementSetting, PartnerCommission } = require("../models/Index");
 const { getSettlementHistory } = require("../utils/settlementHistory");
 const PartnerSettlementBill = require("../models/PartnerSettlementBill");
-const { isGstRegistered } = require("../utils/settlementHold");
 
 /* ============================================================
    PARTNER SETTLEMENT / PAYOUT HISTORY (read-only for partners)
@@ -54,21 +53,17 @@ const listSettlements = async (req, res) => {
 
   // Each row carries its bill's status so the table can show "Upload bill"
   // on approved settlements without opening every one.
-  const [bills, gstRegistered] = await Promise.all([
-    PartnerSettlementBill.find({ settlementId: { $in: settlements.map((s) => s._id) } })
-      .select("settlementId billNumber status rejectionReason").lean(),
-    isGstRegistered(req.partner._id)
-  ]);
+  const bills = await PartnerSettlementBill.find({ settlementId: { $in: settlements.map((s) => s._id) } })
+    .select("settlementId status rejectionReason").lean();
   const billBySettlement = new Map(bills.map((b) => [String(b.settlementId), b]));
 
   return res.json({
     success: true,
     data: settlements.map((s) => {
       const bill = billBySettlement.get(String(s._id));
-      return { ...s.toObject(), bill: bill ? { billNumber: bill.billNumber, status: bill.status, rejectionReason: bill.rejectionReason } : null };
+      return { ...s.toObject(), bill: bill ? { status: bill.status, rejectionReason: bill.rejectionReason } : null };
     }),
     meta: {
-      gstRegistered,
       settlementType: setting?.settlementType || null,
       minimumSettlementAmount: setting?.minimumSettlementAmount || 0,
       nextSettlementDate: computeNextSettlementDate(setting),

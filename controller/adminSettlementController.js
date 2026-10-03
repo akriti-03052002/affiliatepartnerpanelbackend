@@ -88,7 +88,7 @@ const attachBills = async (settlements) => {
 
   const bills = await PartnerSettlementBill.find(
     { settlementId: { $in: settlementIds } },
-    "settlementId billNumber status amount.totalBillAmount file.originalName"
+    "settlementId status amount.totalBillAmount file.originalName"
   ).lean();
 
   const bySettlementId = new Map(bills.map((b) => [String(b.settlementId), b]));
@@ -578,7 +578,7 @@ const verifyBill = async (req, res) => {
     await recordSettlementHistory({ _id: bill.settlementId, partnerId: bill.partnerId }, {
       action: status === "verified" ? "bill_verified" : "bill_rejected",
       reason: status === "rejected" ? bill.rejectionReason : "",
-      meta: { billNumber: bill.billNumber, gstAmount: bill.amount.gstAmount },
+      meta: { fileName: bill.file?.originalName, gstAmount: bill.amount.gstAmount },
       byUserId: req.adminUser._id,
       req
     });
@@ -593,17 +593,17 @@ const verifyBill = async (req, res) => {
       activityType: "document_verified",
       entityType: "PartnerSettlement",
       entityId: bill.settlementId,
-      description: `${req.adminUser.name} ${status} the bill (${bill.billNumber}) for this settlement.`,
+      description: `${req.adminUser.name} ${status} the bill for settlement ${scopedSettlement.settlementNumber}.`,
       req
     });
 
     await PartnerNotification.create({
       partnerId: bill.partnerId,
       type: status === "verified" ? "settlement_bill_verified" : "settlement_bill_rejected",
-      title: status === "verified" ? "Bill verified" : "Bill rejected",
+      title: status === "verified" ? "Bill verified" : "Bill rejected — please re-upload",
       message: status === "verified"
-        ? `Your bill ${bill.billNumber} was verified.`
-        : `Your bill ${bill.billNumber} was rejected: ${bill.rejectionReason}`,
+        ? `Your bill for settlement ${scopedSettlement.settlementNumber} was verified. SPOTX will now process your payment.`
+        : `Your bill for settlement ${scopedSettlement.settlementNumber} was rejected: ${bill.rejectionReason} Upload a corrected bill on the Settlements page.`,
       entity: { type: "PartnerSettlement", entityId: bill.settlementId }
     }).catch((error) => console.error("verifyBill: notification failed:", error.message));
 

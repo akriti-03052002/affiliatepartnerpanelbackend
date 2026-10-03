@@ -30,22 +30,23 @@ const PartnerSettlementBillSchema = new Schema(
       required: true
     },
 
+    // The bill itself is the uploaded file; these are no longer asked for
+    // and are only filled on bills submitted before that change.
     billNumber: {
       type: String,
-      required: true,
+      default: "",
       trim: true
     },
 
     billDate: {
-      type: Date,
-      required: true
+      type: Date
     },
 
     // Partner's GST registration number for this bill — no structured
     // GSTIN field exists anywhere else in the schema today (PartnerDocument
     // only has a generic free-text documentNumber), so this is where it's
-    // actually captured. Required only for GST-registered partners
-    // (enforced in partnerSettlementBillController.submitBill).
+    // actually captured. Legacy — only on bills submitted before bills
+    // became a plain document upload.
     gstin: {
       type: String,
       default: "",

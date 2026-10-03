@@ -27,21 +27,13 @@ const BILLABLE_STATUSES = ["approved", "on_hold", "failed"];
 
 const submitBill = async (req, res) => {
   try {
-    const { billNumber, billDate } = req.body;
-    const gstin = (req.body.gstin || "").trim().toUpperCase();
-    const gstRegistered = await isGstRegistered(req.partner._id);
-
-    if (!billNumber || !billDate) {
-      return res.status(400).json({ success: false, message: "Bill number and bill date are required." });
-    }
-
-    if (gstRegistered && !gstin) {
-      return res.status(400).json({ success: false, message: "You're GST-registered — enter your GSTIN on the bill." });
-    }
-
+    // The bill is the affiliate's own document (PDF/image) — they upload
+    // it as-is; the admin reads the details off the file when verifying.
     if (!req.file) {
-      return res.status(400).json({ success: false, message: "A bill file is required." });
+      return res.status(400).json({ success: false, message: "Choose your bill file (PDF, PNG or JPG) to upload." });
     }
+
+    const gstRegistered = await isGstRegistered(req.partner._id);
 
     const settlement = await PartnerSettlement.findOne({ _id: req.params.id, partnerId: req.partner._id });
 
@@ -64,7 +56,7 @@ const submitBill = async (req, res) => {
     }
 
     // GST is added only for verified GST-registered partners — decided from
-    // their KYC on file, never from whether they typed a GSTIN.
+    // their KYC on file, never from anything on the uploaded bill.
     const commission = settlement.amount.gross;
     const gstRatePercent = gstRegistered ? GST_RATE_PERCENT : 0;
     const gstAmount = round2((commission * gstRatePercent) / 100);
@@ -81,9 +73,6 @@ const submitBill = async (req, res) => {
     const billData = {
       partnerId: req.partner._id,
       settlementId: settlement._id,
-      billNumber,
-      billDate,
-      gstin,
       amount: { commission, gstRatePercent, gstAmount, totalBillAmount, currency: settlement.amount.currency },
       file,
       status: "submitted",
@@ -101,7 +90,7 @@ const submitBill = async (req, res) => {
     await recordSettlementHistory(settlement, {
       action: "bill_submitted",
       amount: { net: 0, gst: gstAmount, total: totalBillAmount, currency: settlement.amount.currency },
-      meta: { billNumber, gstin },
+      meta: { fileName: file.originalName },
       byPartnerUser: req.partnerUser._id,
       req
     });
@@ -116,14 +105,14 @@ const submitBill = async (req, res) => {
       activityType: "document_uploaded",
       entityType: "PartnerSettlement",
       entityId: settlement._id,
-      description: `${req.partnerUser.name} submitted a bill (${billNumber}) for settlement ${settlement.settlementNumber}.`,
+      description: `${req.partnerUser.name} uploaded a bill for settlement ${settlement.settlementNumber}.`,
       req
     });
 
     await notifyAdmins({
       type: "bill_submitted",
       title: existing ? "Bill resubmitted for review" : "Bill to verify",
-      message: `${partnerLabel(req.partner)} ${existing ? "resubmitted" : "submitted"} bill ${billNumber} for settlement ${settlement.settlementNumber}. Payout waits on this bill being verified.`,
+      message: `${partnerLabel(req.partner)} ${existing ? "re-uploaded" : "uploaded"} a bill for settlement ${settlement.settlementNumber}. Payout waits on this bill being verified.`,
       link: "/admin/settlements",
       audienceRoles: ["finance"],
       partnerId: req.partner._id,
